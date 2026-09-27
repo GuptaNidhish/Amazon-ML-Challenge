@@ -3,3 +3,5 @@ __pycache__/
 student_resource/
 output/
 submission_1.zip
+submission_1/
+.DS_Store
