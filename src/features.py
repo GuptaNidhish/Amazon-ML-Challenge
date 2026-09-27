@@ -1,6 +1,9 @@
+import re
 import numpy as np
 from typing import Dict, List, Tuple
 from rapidfuzz import fuzz
+from rapidfuzz.distance import JaroWinkler, Levenshtein
+from blocking import soundex
 
 FEATURE_NAMES = [
     'name_exact',
@@ -9,25 +12,34 @@ FEATURE_NAMES = [
     'name_partial_ratio',
     'name_token_sort_ratio',
     'name_token_set_ratio',
-    'name_token_jaccard',
+    'name_jw',
+    'name_lev',
+    'name_jaccard',
     'name_common_tokens',
     'name_first_token_match',
-    'name_len_diff_ratio',
+    'sndx_match',
+    'sndx_bigram',
+    'name_len_diff',
+    'name_len_ratio',
     'addr_exact',
     'addr_ratio',
     'addr_partial_ratio',
     'addr_token_sort_ratio',
     'addr_token_set_ratio',
-    'addr_token_jaccard',
+    'addr_jw',
+    'addr_lev',
+    'addr_jaccard',
     'addr_common_tokens',
-    'addr_num_jaccard',
-    'addr_shared_numbers',
+    'num_jaccard',
+    'num_common',
+    'num_conflict',
+    'num_exact',
     'addr_is_empty',
     'name_addr_mult',
     'name_addr_max',
-    'name_addr_min',
-    'name_strong_addr_weak',
-    'name_weak_addr_strong',
+    'min_sim',
+    'strong_n_weak_a',
+    'weak_n_strong_a',
     'both_strong',
     'source_is_s3'
 ]
@@ -41,7 +53,7 @@ def compute_pair_features(
     cand_id: str
 ) -> List[float]:
     """
-    Computes 27 fast C++ pairwise features between an S1 entity and an S2/S3 candidate.
+    Computes 36 fast C++ pairwise features between an S1 entity and an S2/S3 candidate.
     """
     w1 = norm_n1.split()
     w2 = norm_n2.split()
@@ -58,12 +70,17 @@ def compute_pair_features(
     n_partial = fuzz.partial_ratio(norm_n1, norm_n2) / 100.0
     n_sort = fuzz.token_sort_ratio(norm_n1, norm_n2) / 100.0
     n_set = fuzz.token_set_ratio(norm_n1, norm_n2) / 100.0
+    n_jw = JaroWinkler.similarity(norm_n1, norm_n2)
+    n_lev = Levenshtein.normalized_similarity(norm_n1, norm_n2)
     
     name_jaccard = len(s1_w & s2_w) / len(s1_w | s2_w) if (s1_w | s2_w) else 0.0
     name_common = float(len(s1_w & s2_w))
     name_first_match = 1.0 if (w1 and w2 and w1[0] == w2[0]) else 0.0
+    sndx_match = 1.0 if (w1 and w2 and soundex(w1[0]) == soundex(w2[0])) else 0.0
+    sndx_bigram = 1.0 if (len(w1) >= 2 and len(w2) >= 2 and soundex(w1[0]) == soundex(w2[0]) and soundex(w1[1]) == soundex(w2[1])) else 0.0
     len_max = max(len(norm_n1), len(norm_n2), 1)
     name_len_diff = abs(len(norm_n1) - len(norm_n2)) / len_max
+    name_len_ratio = min(len(norm_n1), len(norm_n2)) / len_max
     
     # 2. Address features
     aw1 = norm_a1.split()
@@ -75,27 +92,23 @@ def compute_pair_features(
     addr_exact = 1.0 if (norm_a1 == norm_a2 and norm_a1) else 0.0
     
     if addr_empty:
-        a_ratio = 0.0
-        a_partial = 0.0
-        a_sort = 0.0
-        a_set = 0.0
-        addr_jaccard = 0.0
-        addr_common = 0.0
-        num_jaccard = 0.0
-        num_common = 0.0
+        a_ratio = a_partial = a_sort = a_set = a_jw = a_lev = addr_jaccard = addr_common = num_jaccard = num_common = num_conflict = num_exact = 0.0
     else:
         a_ratio = fuzz.ratio(norm_a1, norm_a2) / 100.0
         a_partial = fuzz.partial_ratio(norm_a1, norm_a2) / 100.0
         a_sort = fuzz.token_sort_ratio(norm_a1, norm_a2) / 100.0
         a_set = fuzz.token_set_ratio(norm_a1, norm_a2) / 100.0
-        
+        a_jw = JaroWinkler.similarity(norm_a1, norm_a2)
+        a_lev = Levenshtein.normalized_similarity(norm_a1, norm_a2)
         addr_jaccard = len(s1_aw & s2_aw) / len(s1_aw | s2_aw) if (s1_aw | s2_aw) else 0.0
         addr_common = float(len(s1_aw & s2_aw))
         
-        nums1 = {x for x in aw1 if x.isdigit()}
-        nums2 = {x for x in aw2 if x.isdigit()}
+        nums1 = {x.lstrip('0') or '0' for x in re.findall(r'\d+', norm_a1)}
+        nums2 = {x.lstrip('0') or '0' for x in re.findall(r'\d+', norm_a2)}
         num_jaccard = len(nums1 & nums2) / len(nums1 | nums2) if (nums1 | nums2) else 0.0
         num_common = float(len(nums1 & nums2))
+        num_conflict = 1.0 if (nums1 and nums2 and len(nums1 & nums2) == 0) else 0.0
+        num_exact = 1.0 if (nums1 and nums2 and nums1 == nums2) else 0.0
         
     # 3. Cross-field interaction features
     mult = n_sort * a_sort
@@ -107,33 +120,11 @@ def compute_pair_features(
     is_s3 = 1.0 if cand_id.startswith('S3') else 0.0
     
     return [
-        name_exact,
-        name_compact_exact,
-        n_ratio,
-        n_partial,
-        n_sort,
-        n_set,
-        name_jaccard,
-        name_common,
-        name_first_match,
-        name_len_diff,
-        addr_exact,
-        a_ratio,
-        a_partial,
-        a_sort,
-        a_set,
-        addr_jaccard,
-        addr_common,
-        num_jaccard,
-        num_common,
-        addr_empty,
-        mult,
-        max_sim,
-        min_sim,
-        strong_n_weak_a,
-        weak_n_strong_a,
-        both_strong,
-        is_s3
+        name_exact, name_compact_exact, n_ratio, n_partial, n_sort, n_set, n_jw, n_lev,
+        name_jaccard, name_common, name_first_match, sndx_match, sndx_bigram, name_len_diff, name_len_ratio,
+        addr_exact, a_ratio, a_partial, a_sort, a_set, a_jw, a_lev, addr_jaccard, addr_common,
+        num_jaccard, num_common, num_conflict, num_exact, addr_empty, mult, max_sim, min_sim,
+        strong_n_weak_a, weak_n_strong_a, both_strong, is_s3
     ]
 
 

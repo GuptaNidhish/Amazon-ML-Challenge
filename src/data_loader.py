@@ -1,16 +1,15 @@
 import os
 import pandas as pd
-from typing import Dict, Set, Tuple
+from typing import Dict, Set, Tuple, Iterator
 from config import TRAIN_S1, TRAIN_S2, TRAIN_S3, TRAIN_GT, TEST_S1, TEST_S2, TEST_S3
 
 def load_source_df(path: str) -> pd.DataFrame:
     """
-    Load a source TSV file.
+    Load a source TSV file into pandas DataFrame.
     Returns DataFrame with columns ['entity_id', 'business_name', 'business_address', 'country']
     with missing values filled as empty strings.
     """
     df = pd.read_csv(path, sep='\t', dtype=str, keep_default_na=False)
-    # Ensure all required columns exist
     for col in ['entity_id', 'business_name', 'business_address', 'country']:
         if col not in df.columns:
             df[col] = ''
@@ -45,3 +44,26 @@ def load_test_data() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     s2 = load_source_df(TEST_S2)
     s3 = load_source_df(TEST_S3)
     return s1, s2, s3
+
+def stream_source_file_by_country(path: str, target_country: str) -> Iterator[Tuple[str, str, str]]:
+    """
+    Streams records (entity_id, business_name, business_address) for a given country
+    directly from disk with ~0 RAM overhead.
+    """
+    with open(path, 'r', encoding='utf-8') as f:
+        next(f, None)  # Skip header
+        for line in f:
+            parts = line.rstrip('\n').split('\t')
+            if len(parts) >= 4 and parts[3] == target_country:
+                yield parts[0], parts[1], parts[2]
+
+def stream_all_s1_records(path: str = TEST_S1) -> Iterator[Tuple[str, str, str, str]]:
+    """
+    Streams all S1 records (entity_id, business_name, business_address, country) in file order.
+    """
+    with open(path, 'r', encoding='utf-8') as f:
+        next(f, None)
+        for line in f:
+            parts = line.rstrip('\n').split('\t')
+            if len(parts) >= 4:
+                yield parts[0], parts[1], parts[2], parts[3]

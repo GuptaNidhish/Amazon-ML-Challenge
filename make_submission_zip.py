@@ -10,7 +10,7 @@ SUBMISSION_DIR = os.path.join(PROJECT_DIR, 'submission_package')
 MATCHING_TSV = os.path.join(OUTPUT_DIR, 'matching_results.tsv')
 CANDIDATE_TSV = os.path.join(OUTPUT_DIR, 'candidate_pairs.tsv')
 DOC_PATH = os.path.join(PROJECT_DIR, 'Documentation.md')
-ZIP_OUTPUT = os.path.join(PROJECT_DIR, 'submission_1.zip')
+ZIP_OUTPUT = os.path.join(PROJECT_DIR, 'submission_2.zip')
 
 DOCUMENTATION_CONTENT = """# ML Challenge 2026: Business Entity Resolution Solution
 
@@ -111,8 +111,9 @@ def create_submission_package():
     # 3. Create clean zip file
     print(f"Creating {ZIP_OUTPUT}...")
     with zipfile.ZipFile(ZIP_OUTPUT, 'w', zipfile.ZIP_DEFLATED) as zf:
-        zf.write(MATCHING_TSV, arcname='matching_results.tsv')
-        zf.write(CANDIDATE_TSV, arcname='candidate_pairs.tsv')
+        zf.write(MATCHING_TSV, arcname='output/matching_results.tsv')
+        zf.write(CANDIDATE_TSV, arcname='output/candidate_pairs.tsv')
+        zf.write(DOC_PATH, arcname='Documentation_template.md')
         zf.write(DOC_PATH, arcname='Documentation.md')
         
         # Add code artefacts
@@ -126,6 +127,11 @@ def create_submission_package():
         zf.write(os.path.join(PROJECT_DIR, 'run.py'), arcname=os.path.join('code', 'business_entity_resolution', 'run.py'))
         if os.path.isfile(os.path.join(PROJECT_DIR, 'README.md')):
             zf.write(os.path.join(PROJECT_DIR, 'README.md'), arcname=os.path.join('code', 'business_entity_resolution', 'README.md'))
+        if os.path.isfile(os.path.join(PROJECT_DIR, 'requirements.txt')):
+            zf.write(os.path.join(PROJECT_DIR, 'requirements.txt'), arcname=os.path.join('code', 'business_entity_resolution', 'requirements.txt'))
+        model_file = os.path.join(PROJECT_DIR, 'models', 'lgbm_model.txt')
+        if os.path.isfile(model_file):
+            zf.write(model_file, arcname=os.path.join('code', 'business_entity_resolution', 'models', 'lgbm_model.txt'))
 
     size_mb = os.path.getsize(ZIP_OUTPUT) / (1024 * 1024)
     print(f"\n>>> SUBMISSION PACKAGE CREATED: {ZIP_OUTPUT} ({size_mb:.1f} MB)")

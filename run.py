@@ -12,8 +12,8 @@ def main():
     parser.add_argument('--baseline', action='store_true', help='Generate Submission 1 baseline')
     parser.add_argument('--train', action='store_true', help='Run ML training and threshold optimization')
     parser.add_argument('--test', action='store_true', help='Generate Submission 2 with full ML pipeline')
-    parser.add_argument('--sample-size', type=int, default=25000, help='Training sample size')
-    parser.add_argument('--threshold', type=float, default=0.65, help='Inference decision threshold')
+    parser.add_argument('--sample-size', type=int, default=35000, help='Training sample size')
+    parser.add_argument('--threshold', type=float, default=0.80, help='Inference decision threshold')
     args = parser.parse_args()
 
     if args.baseline:
